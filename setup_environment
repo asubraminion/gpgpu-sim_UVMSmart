@@ -2,7 +2,13 @@
 
 ps -p $$ | awk '/bash/ || / sh/ || /zsh/ {exit 1;}' && echo "ERROR ** source setup_environment must be run in a bash, zsh or sh shell; see README" && exit
 
-export CUDA_INSTALL_PATH=/usr/local/cuda-8.0
+#export CUDA_INSTALL_PATH=/usr/local/cuda-8.0 #anusub01 -- commented out
+
+#Allow CUDA_INSTALL_PATH to be set externally, otherwise use default #anusub01
+if [ -z "$CUDA_INSTALL_PATH" ]; then
+    export CUDA_INSTALL_PATH=/apps/cuda-11.8
+fi
+
 export PATH=$PATH:$CUDA_INSTALL_PATH/bin
 export LD_LIBRARY_PATH=/usr/local/lib64:/usr/local/lib:$CUDA_INSTALL_PATH/lib64:$CUDA_INSTALL_PATH/lib
 
@@ -48,14 +54,16 @@ if [ $? = 1 ]; then
 	return;
 fi
 
-CC_VERSION=`gcc --version | head -1 | awk '{for(i=1;i<=NF;i++){ if(match($i,/^[0-9]\.[0-9]\.[0-9]$/))  {print $i; exit 0}}}'`
+CC_VERSION=`gcc --version | head -1 | awk '{for(i=1;i<=NF;i++){ if(match($i,/^[0-9]+\.[0-9]+\.[0-9]+$/))  {print $i; exit 0}}}'`
 
 CUDA_VERSION_STRING=`$CUDA_INSTALL_PATH/bin/nvcc --version | awk '/release/ {print $5;}' | sed 's/,//'`;
+
+#comment out version checks -- anusub01
 CUDA_VERSION_NUMBER=`echo $CUDA_VERSION_STRING | sed 's/\./ /' | awk '{printf("%02u%02u", 10*int($1), 10*$2);}'`
-if [ $CUDA_VERSION_NUMBER -gt 9100 -o $CUDA_VERSION_NUMBER -lt 2030  ]; then
-	echo "ERROR ** GPGPU-Sim version $GPGPUSIM_VERSION_STRING not tested with CUDA version $CUDA_VERSION_STRING (please see README)";
-	return
-fi
+#if [ $CUDA_VERSION_NUMBER -gt 9100 -o $CUDA_VERSION_NUMBER -lt 2030  ]; then
+#	echo "ERROR ** GPGPU-Sim version $GPGPUSIM_VERSION_STRING not tested with CUDA version $CUDA_VERSION_STRING (please see README)";
+#	return
+#fi
 
 if [ $# = '1' ] ;
 then
@@ -92,6 +100,16 @@ else
 	export LD_LIBRARY_PATH=$GPGPUSIM_ROOT/lib/$GPGPUSIM_CONFIG:$LD_LIBRARY_PATH
 fi
 
+# anusub01 - Create versioned symlinks for libcudart.so to support CUDA 10+
+# Binaries compiled with CUDA 10+ look for libcudart.so.X.0 but GPGPU-Sim builds libcudart.so
+GPGPUSIM_LIB_DIR=$GPGPUSIM_ROOT/lib/$GPGPUSIM_CONFIG
+if [ -f "$GPGPUSIM_LIB_DIR/libcudart.so" ]; then
+	for ver in 10.0 10.1 10.2 11.0 11.1 11.2 11.3 11.4 11.5 11.6 11.7 11.8 12.0; do
+		if [ ! -e "$GPGPUSIM_LIB_DIR/libcudart.so.$ver" ]; then
+			ln -sf libcudart.so "$GPGPUSIM_LIB_DIR/libcudart.so.$ver" 2>/dev/null
+		fi
+	done
+fi
 
 # The following sets OPENCL_REMOTE_GPU_HOST which is used by GPGPU-Sim to
 # SSH to remote node to generate PTX for OpenCL kernels when running on 

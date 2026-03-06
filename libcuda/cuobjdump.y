@@ -103,6 +103,11 @@ headerinfo :	H_SEPARATOR NEWLINE
 				H_PRODUCER IDENTIFIER NEWLINE
 				H_HOST IDENTIFIER NEWLINE
 				H_COMPILESIZE IDENTIFIER {setCuobjdumparch($4);};
+			|   H_SEPARATOR NEWLINE
+				H_ARCH IDENTIFIER NEWLINE
+				H_CODEVERSION CODEVERSION NEWLINE
+				H_HOST IDENTIFIER NEWLINE
+				H_COMPILESIZE IDENTIFIER {setCuobjdumparch($4);};
 
 identifier : H_IDENTIFIER FILENAME emptylines {setCuobjdumpidentifier($2);}
 			 |	{setCuobjdumpidentifier("default");};

@@ -1406,8 +1406,9 @@ struct shader_core_config : public core_config
 
 struct shader_core_stats_pod {
 
-	void* shader_core_stats_pod_start[]; // DO NOT MOVE FROM THE TOP - spaceless pointer to the start of this structure
-	unsigned long long *shader_cycles;
+	//void* shader_core_stats_pod_start[]; // DO NOT MOVE FROM THE TOP - spaceless pointer to the start of this structure
+	void* shader_core_stats_pod_start; //(changed from flexible array for GCC compatibility) -- anusub01
+    unsigned long long *shader_cycles;
     unsigned *m_num_sim_insn; // number of scalar thread instructions committed by this shader core
     unsigned *m_num_sim_winsn; // number of warp instructions committed by this shader core
 	unsigned *m_last_num_sim_insn;
@@ -1487,7 +1488,7 @@ public:
     shader_core_stats( const shader_core_config *config )
     {
         m_config = config;
-        shader_core_stats_pod *pod = reinterpret_cast< shader_core_stats_pod * > ( this->shader_core_stats_pod_start );
+        shader_core_stats_pod *pod = static_cast< shader_core_stats_pod * > ( this );
         memset(pod,0,sizeof(shader_core_stats_pod));
         shader_cycles=(unsigned long long *) calloc(config->num_shader(),sizeof(unsigned long long ));
         m_num_sim_insn = (unsigned*) calloc(config->num_shader(),sizeof(unsigned));

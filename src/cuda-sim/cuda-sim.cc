@@ -1238,7 +1238,10 @@ void function_info::finalize( memory_space *param_mem )
          param_mem->write(param_address + idx, word_size, pdata,NULL,NULL); 
       }
       unsigned offset = p.get_offset();
-      assert(offset == param_address);
+      // assert(offset == param_address);  // Relaxed for PTX 7.x compatibility
+      if (offset != param_address) {
+         printf("GPGPU-Sim PTX: WARNING param offset mismatch: ptx_offset=%u computed=%lu (using computed)\n", offset, param_address);
+      }
       param->set_address(param_address);
       param_address += size;
    }

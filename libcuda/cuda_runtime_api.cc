@@ -1123,6 +1123,73 @@ __host__ cudaError_t CUDARTAPI cudaLaunch( const char *hostFun )
 	return g_last_cudaError = cudaSuccess;
 }
 
+// CUDA 11.x API support -- anusub01
+// Storage for call configuration (used by __cudaPushCallConfiguration/__cudaPopCallConfiguration)
+static std::vector<std::tuple<dim3, dim3, size_t, cudaStream_t>> g_cuda_call_config_stack;
+
+extern "C" __host__ unsigned CUDARTAPI __cudaPushCallConfiguration(
+    dim3 gridDim, dim3 blockDim, size_t sharedMem, cudaStream_t stream)
+{
+    g_cuda_call_config_stack.push_back(std::make_tuple(gridDim, blockDim, sharedMem, stream));
+    return 0;
+}
+
+extern "C" __host__ cudaError_t CUDARTAPI __cudaPopCallConfiguration(
+    dim3 *gridDim, dim3 *blockDim, size_t *sharedMem, cudaStream_t *stream)
+{
+    if (g_cuda_call_config_stack.empty()) {
+        return cudaErrorInvalidConfiguration;
+    }
+    auto config = g_cuda_call_config_stack.back();
+    g_cuda_call_config_stack.pop_back();
+    *gridDim = std::get<0>(config);
+    *blockDim = std::get<1>(config);
+    *sharedMem = std::get<2>(config);
+    *stream = std::get<3>(config);
+    return cudaSuccess;
+}
+
+__host__ cudaError_t CUDARTAPI cudaLaunchKernel(
+    const void *func, dim3 gridDim, dim3 blockDim, void **args,
+    size_t sharedMem, cudaStream_t stream)
+{
+    // CUDA 11.x kernel launch -- anusub01
+    printf("GPGPU-Sim PTX: cudaLaunchKernel called, func=%p, grid=(%u,%u,%u), block=(%u,%u,%u)\n",
+           func, gridDim.x, gridDim.y, gridDim.z, blockDim.x, blockDim.y, blockDim.z);
+
+    // Configure the call
+    cudaError_t err = cudaConfigureCall(gridDim, blockDim, sharedMem, stream);
+    if (err != cudaSuccess) {
+        printf("GPGPU-Sim PTX: cudaConfigureCall failed\n");
+        return err;
+    }
+
+    // Set up arguments using parameter info from registered function
+    // Get the kernel's function_info to find parameter sizes
+    CUctx_st* context = GPGPUSim_Context();
+    function_info *entry = context->get_kernel((const char*)func);
+    printf("GPGPU-Sim PTX: cudaLaunchKernel entry=%p, args=%p\n", entry, args);
+
+    if (entry && args) {
+        unsigned num_args = entry->num_args();
+        printf("GPGPU-Sim PTX: cudaLaunchKernel num_args=%u\n", num_args);
+        size_t offset = 0;
+        for (unsigned i = 0; i < num_args; i++) {
+            size_t arg_size = entry->get_param_size(i);
+            printf("GPGPU-Sim PTX: arg[%u] size=%zu, ptr=%p\n", i, arg_size, args[i]);
+            if (arg_size > 0 && args[i] != NULL) {
+                cudaSetupArgument(args[i], arg_size, offset);
+                offset += arg_size;
+                // Align to 8 bytes
+                offset = (offset + 7) & ~7;
+            }
+        }
+    }
+
+    printf("GPGPU-Sim PTX: calling cudaLaunch\n");
+    return cudaLaunch((const char*)func);
+}
+
 /*******************************************************************************
  *                                                                              *
  *                                                                              *
@@ -1303,7 +1370,8 @@ int CUDARTAPI __cudaSynchronizeThreads(void**, void*)
  *                                                                              *
  *******************************************************************************/
 
-#if (CUDART_VERSION >= 3010)
+//#if (CUDART_VERSION >= 3010) //anusub01
+#if (CUDART_VERSION >= 3010) && (CUDART_VERSION < 10000)
 
 typedef struct CUuuid_st {                                /**< CUDA definition of UUID */
     char bytes[16];
@@ -1896,13 +1964,19 @@ void cuobjdumpParseBinary(unsigned int handle){
 
 void** CUDARTAPI __cudaRegisterFatBinary( void *fatCubin )
 {
+	printf("GPGPU-Sim PTX: __cudaRegisterFatBinary called, fatCubin=%p\n", fatCubin);
+	fflush(stdout);
 #if (CUDART_VERSION < 2010)
 	printf("GPGPU-Sim PTX: ERROR ** this version of GPGPU-Sim requires CUDA 2.1 or higher\n");
 	exit(1);
 #endif
+	printf("GPGPU-Sim PTX: getting context...\n"); fflush(stdout);
 	CUctx_st *context = GPGPUSim_Context();
+	printf("GPGPU-Sim PTX: context=%p, checking cuobjdump...\n", context); fflush(stdout);
 	static unsigned next_fat_bin_handle = 1;
-	if(context->get_device()->get_gpgpu()->get_config().use_cuobjdump()) {
+	bool use_cuobj = context->get_device()->get_gpgpu()->get_config().use_cuobjdump();
+	printf("GPGPU-Sim PTX: use_cuobjdump=%d\n", use_cuobj); fflush(stdout);
+	if(use_cuobj) {
 		// The following workaround has only been verified on 64-bit systems. 
 		if (sizeof(void*) == 4) 
 			printf("GPGPU-Sim PTX: FatBin file name extraction has not been tested on 32-bit system.\n"); 
@@ -2077,6 +2151,19 @@ cudaError_t CUDARTAPI cudaDeviceSynchronize(void){
 	return g_last_cudaError = cudaSuccess;
 }
 
+// CUDA 11.x API -- anusub01
+void CUDARTAPI __cudaRegisterFatBinaryEnd(void **fatCubinHandle)
+{
+    // This is called after all registrations are complete
+    // No action needed in GPGPU-Sim
+    printf("GPGPU-Sim PTX: __cudaRegisterFatBinaryEnd called\n");
+}
+
+extern "C" void CUDARTAPI __cudaInitModule(void **fatCubinHandle)
+{
+    // Module initialization stub for CUDA 11.x
+    printf("GPGPU-Sim PTX: __cudaInitModule called\n");
+}
 
 void CUDARTAPI __cudaRegisterFunction(
 		void   **fatCubinHandle,
