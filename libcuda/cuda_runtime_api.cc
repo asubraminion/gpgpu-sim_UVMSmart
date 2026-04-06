@@ -1175,7 +1175,7 @@ __host__ cudaError_t CUDARTAPI cudaLaunchKernel(
         printf("GPGPU-Sim PTX: cudaLaunchKernel num_args=%u\n", num_args);
         size_t offset = 0;
         for (unsigned i = 0; i < num_args; i++) {
-            size_t arg_size = entry->get_param_size(i);
+            size_t arg_size = entry->get_arg(i)->get_size_in_bytes();
             printf("GPGPU-Sim PTX: arg[%u] size=%zu, ptr=%p\n", i, arg_size, args[i]);
             if (arg_size > 0 && args[i] != NULL) {
                 cudaSetupArgument(args[i], arg_size, offset);

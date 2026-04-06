@@ -32,6 +32,9 @@ cd benchmarks/Managed/bfs #run a benchmark (BFS for example)
 | `src/intersim2/globals.cpp` | Duplicate symbol linker error | Removed `cuobjdump_parse` stub |
 | `src/cuda-sim/cuda-sim.cc` | PTX 7.x parameter alignment assertion | Relaxed assertion, log warning instead |
 | `libcuda/cuda_runtime_api.cc` | Missing CUDA 11.x APIs | Added `cudaLaunchKernel`, `__cudaPushCallConfiguration`, `__cudaPopCallConfiguration` |
+| `libcuda/cuda_runtime_api.cc` | `function_info::get_param_size()` does not exist | Changed to `entry->get_arg(i)->get_size_in_bytes()` in `cudaLaunchKernel` |
+| `src/cuda-sim/Makefile` (line 127) | `chmod -w instructions.h` fails on filesystems with forced group-write ACLs (NFS/Lustre) | Changed to `chmod -w $*.h 2>/dev/null || true` |
+| `src/cuda-sim/Makefile` (line 132) | Bison 3.x adds token descriptions with embedded quotes (e.g. `/* "end of file" */`) to `ptx.tab.h`, breaking C++11 string literal parsing in `ptx_parser_decode.def` | Added `sed 's\|/\*.*\*/\|\|g'` step to strip block comments before generating DEF macros |
 
 ## Benchmark Configuration
 
@@ -82,6 +85,19 @@ libcudart.so.11.0 => /apps/cuda-11.8/lib64/libcudart.so.11.0
 - Apply the cuobjdump.l fix
 - Regenerate lexer: `rm build/*/release/libcuda/cuobjdump_lexer.* && make`
 
+### `chmod: new permissions are r--rw----, not r--r-----` during build
+- Occurs on NFS/Lustre/GPFS filesystems that force group-write via ACLs
+- Fix: in `src/cuda-sim/Makefile` line 127, change `@chmod -w $*.h` to `@chmod -w $*.h 2>/dev/null || true`
+
+### `error: unable to find string literal operator 'operator""end'` in ptx_parser.cc
+- Caused by bison 3.x embedding human-readable token descriptions (with double quotes) in `ptx.tab.h`
+- Fix: in `src/cuda-sim/Makefile` line 132, add `sed 's|/\*.*\*/||g'` before the other sed steps to strip block comments when generating `ptx_parser_decode.def`
+- Also delete the stale file: `rm build/*/release/cuda-sim/ptx_parser_decode.def`
+
+### `error: 'class function_info' has no member named 'get_param_size'`
+- `get_param_size(i)` was never defined in `function_info`; use `get_arg(i)->get_size_in_bytes()` instead
+- Fixed in `libcuda/cuda_runtime_api.cc` in the `cudaLaunchKernel` implementation
+
 ### "No PTX sections found with sm capability..."
 - Update `-gpgpu_ptx_force_max_capability` in gpgpusim.config to match your binary's SM version
 
@@ -97,4 +113,5 @@ libcudart.so.11.0 => /apps/cuda-11.8/lib64/libcudart.so.11.0
 | libcuda/cuobjdump.y | CUDA 11.8 format |
 | src/intersim2/globals.cpp | Duplicate symbol |
 | src/cuda-sim/cuda-sim.cc | PTX alignment |
-| libcuda/cuda_runtime_api.cc | CUDA 11.x API |
+| libcuda/cuda_runtime_api.cc | CUDA 11.x API + `get_param_size` fix |
+| src/cuda-sim/Makefile | `chmod` ACL fix + bison 3.x comment stripping |
